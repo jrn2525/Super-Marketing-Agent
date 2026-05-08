@@ -1,0 +1,100 @@
+{
+  "name": "WR Gmail - Search",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wr-gmail-search",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "33333333-0001-0001-0001-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "wr-gmail-search"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\n\nconst query = body.query || body.q || '';\nconst maxResults = parseInt(body.maxResults || body.limit || 10, 10);\n\nif (!query) throw new Error('Missing required field: query. Use Gmail search syntax e.g. \"from:john subject:invoice\"');\nif (maxResults < 1 || maxResults > 100) throw new Error('maxResults must be between 1 and 100');\n\nreturn [{ json: { query, maxResults } }];"
+      },
+      "id": "33333333-0002-0002-0002-000000000002",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": "={{ $json.maxResults }}",
+        "filters": {
+          "search": "={{ $json.query }}",
+          "readStatus": "unread_read"
+        },
+        "simplify": true
+      },
+      "id": "33333333-0003-0003-0003-000000000003",
+      "name": "Search Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [680, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all Gmail search results into a single response\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n  return [{ json: { emails: [], count: 0 } }];\n}\n\nconst emails = items.map(item => {\n  const msg = item.json;\n  const headers = msg.payload?.headers || [];\n  const getHeader = (name) =>\n    headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value || '';\n\n  return {\n    id: msg.id || '',\n    threadId: msg.threadId || '',\n    subject: getHeader('Subject') || msg.subject || '',\n    from: getHeader('From') || msg.from || '',\n    to: getHeader('To') || msg.to || '',\n    date: getHeader('Date') || msg.date || '',\n    snippet: msg.snippet || '',\n    labelIds: msg.labelIds || [],\n    isUnread: (msg.labelIds || []).includes('UNREAD')\n  };\n});\n\nreturn [{ json: { emails, count: emails.length } }];"
+      },
+      "id": "33333333-0004-0004-0004-000000000004",
+      "name": "Format Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "33333333-0005-0005-0005-000000000005",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 300]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Validate Input", "type": "main", "index": 0 }]]
+    },
+    "Validate Input": {
+      "main": [[{ "node": "Search Gmail", "type": "main", "index": 0 }]]
+    },
+    "Search Gmail": {
+      "main": [[{ "node": "Format Results", "type": "main", "index": 0 }]]
+    },
+    "Format Results": {
+      "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "war-room-participant"
+  },
+  "tags": []
+}

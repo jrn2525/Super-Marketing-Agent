@@ -1,0 +1,88 @@
+{
+  "name": "WR Gmail - Send",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wr-gmail-send",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "22222222-0001-0001-0001-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "wr-gmail-send"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\n\nconst to = body.to || '';\nconst subject = body.subject || '';\nconst message = body.body || body.message || '';\nconst cc = body.cc || '';\nconst bcc = body.bcc || '';\nconst senderName = body.senderName || '';\n\nif (!to) throw new Error('Missing required field: to');\nif (!subject) throw new Error('Missing required field: subject');\nif (!message) throw new Error('Missing required field: body');\n\nreturn [{ json: { to, subject, message, cc, bcc, senderName } }];"
+      },
+      "id": "22222222-0002-0002-0002-000000000002",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.message }}",
+        "options": {
+          "appendAttribution": false,
+          "ccList": "={{ $json.cc }}",
+          "bccList": "={{ $json.bcc }}",
+          "senderName": "={{ $json.senderName }}"
+        }
+      },
+      "id": "22222222-0003-0003-0003-000000000003",
+      "name": "Send Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [680, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, messageId: $json.id, threadId: $json.threadId }) }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "22222222-0004-0004-0004-000000000004",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 300]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Validate Input", "type": "main", "index": 0 }]]
+    },
+    "Validate Input": {
+      "main": [[{ "node": "Send Gmail", "type": "main", "index": 0 }]]
+    },
+    "Send Gmail": {
+      "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "war-room-participant"
+  },
+  "tags": []
+}

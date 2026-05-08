@@ -1,0 +1,95 @@
+{
+  "name": "WR Gmail - Read",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wr-gmail-read",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "44444444-0001-0001-0001-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "wr-gmail-read"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst messageId = body.messageId || body.id || '';\nif (!messageId) throw new Error('Missing required field: messageId — get this from the Search workflow results');\nreturn [{ json: { messageId } }];"
+      },
+      "id": "44444444-0002-0002-0002-000000000002",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "get",
+        "messageId": "={{ $json.messageId }}",
+        "simplify": false
+      },
+      "id": "44444444-0003-0003-0003-000000000003",
+      "name": "Get Gmail Message",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [680, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Gmail node (Simplify OFF) returns pre-processed fields at top level\nconst msg = $input.first().json;\n\nreturn [{\n  json: {\n    id: msg.id || '',\n    threadId: msg.threadId || '',\n    messageId: msg.messageId || '',\n    subject: msg.subject || '',\n    from: msg.from || '',\n    to: msg.to || '',\n    replyTo: msg.replyTo || '',\n    date: msg.date || '',\n    labelIds: msg.labelIds || [],\n    isUnread: Array.isArray(msg.labelIds) ? msg.labelIds.includes('UNREAD') : false,\n    bodyHtml: msg.html || '',\n    bodyText: msg.text || '',\n    sizeEstimate: msg.sizeEstimate || 0\n  }\n}];"
+      },
+      "id": "44444444-0004-0004-0004-000000000004",
+      "name": "Parse Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "44444444-0005-0005-0005-000000000005",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 300]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Validate Input", "type": "main", "index": 0 }]]
+    },
+    "Validate Input": {
+      "main": [[{ "node": "Get Gmail Message", "type": "main", "index": 0 }]]
+    },
+    "Get Gmail Message": {
+      "main": [[{ "node": "Parse Message", "type": "main", "index": 0 }]]
+    },
+    "Parse Message": {
+      "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "war-room-participant"
+  },
+  "tags": []
+}
