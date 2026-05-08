@@ -1,0 +1,453 @@
+app:
+  description: >-
+    Senior Marketing Strategist agent. Routes user requests to one of 6 personas
+    (Strategy / Copywriting / Brand Review / Research / Campaign / General),
+    each grounded in a tailored slice of the 4 marketing knowledge bases (MKB1-4).
+    Designed to be invoked via Telegram bot.
+  icon: 🎯
+  icon_background: '#1a1a2e'
+  mode: advanced-chat
+  name: WR Super Marketing Agent
+  use_icon_as_answer_icon: false
+
+kind: app
+version: 0.1.4
+
+# ============================================================================
+# POST-IMPORT TODO:
+#   Replace these placeholder dataset IDs with your real ones (Dify -> Knowledge):
+#     MKB1_DATASET_ID  -> Brand & Voice
+#     MKB2_DATASET_ID  -> Offer & Products
+#     MKB3_DATASET_ID  -> Audience & Market
+#     MKB4_DATASET_ID  -> Proven Assets
+#   Pick LLM in each LLM node (recommended: anthropic/claude-haiku-4.5).
+#   Publish.
+# ============================================================================
+
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: "Hey — I'm your marketing strategist. Tell me what you need: a campaign plan, copy for something, a brand voice review, market research, or just spitballing? The more specific you are, the sharper my output will be."
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions:
+      - "Draft 3 cold-email angles for {{ICP}} about {{offer}}"
+      - "Plan a 4-week campaign for {{product}} launch"
+      - "Review this copy for brand voice: ..."
+      - "What's our differentiation vs {{competitor}}?"
+    suggested_questions_after_answer:
+      enabled: true
+    text_to_speech:
+      enabled: false
+
+  graph:
+    edges:
+      - { id: start-to-classifier, source: start, sourceHandle: source, target: classifier, targetHandle: target, type: custom }
+      - { id: classifier-to-strategy, source: classifier, sourceHandle: '1', target: retrieve-strategy, targetHandle: target, type: custom }
+      - { id: classifier-to-copy, source: classifier, sourceHandle: '2', target: retrieve-copy, targetHandle: target, type: custom }
+      - { id: classifier-to-brand, source: classifier, sourceHandle: '3', target: retrieve-brand, targetHandle: target, type: custom }
+      - { id: classifier-to-research, source: classifier, sourceHandle: '4', target: retrieve-research, targetHandle: target, type: custom }
+      - { id: classifier-to-campaign, source: classifier, sourceHandle: '5', target: retrieve-campaign, targetHandle: target, type: custom }
+      - { id: classifier-to-general, source: classifier, sourceHandle: '6', target: retrieve-general, targetHandle: target, type: custom }
+      - { id: retrieve-strategy-to-llm, source: retrieve-strategy, sourceHandle: source, target: llm-strategy, targetHandle: target, type: custom }
+      - { id: retrieve-copy-to-llm, source: retrieve-copy, sourceHandle: source, target: llm-copy, targetHandle: target, type: custom }
+      - { id: retrieve-brand-to-llm, source: retrieve-brand, sourceHandle: source, target: llm-brand, targetHandle: target, type: custom }
+      - { id: retrieve-research-to-llm, source: retrieve-research, sourceHandle: source, target: llm-research, targetHandle: target, type: custom }
+      - { id: retrieve-campaign-to-llm, source: retrieve-campaign, sourceHandle: source, target: llm-campaign, targetHandle: target, type: custom }
+      - { id: retrieve-general-to-llm, source: retrieve-general, sourceHandle: source, target: llm-general, targetHandle: target, type: custom }
+      - { id: llm-strategy-to-answer, source: llm-strategy, sourceHandle: source, target: answer, targetHandle: target, type: custom }
+      - { id: llm-copy-to-answer, source: llm-copy, sourceHandle: source, target: answer, targetHandle: target, type: custom }
+      - { id: llm-brand-to-answer, source: llm-brand, sourceHandle: source, target: answer, targetHandle: target, type: custom }
+      - { id: llm-research-to-answer, source: llm-research, sourceHandle: source, target: answer, targetHandle: target, type: custom }
+      - { id: llm-campaign-to-answer, source: llm-campaign, sourceHandle: source, target: answer, targetHandle: target, type: custom }
+      - { id: llm-general-to-answer, source: llm-general, sourceHandle: source, target: answer, targetHandle: target, type: custom }
+
+    nodes:
+      # -----------------------------------------------------------------
+      - data:
+          desc: ''
+          selected: false
+          title: Start
+          type: start
+          variables: []
+        id: start
+        position: { x: 80, y: 400 }
+        type: custom
+        width: 244
+        height: 80
+
+      # -----------------------------------------------------------------
+      # QUESTION CLASSIFIER -- routes to one of 6 intent branches
+      # -----------------------------------------------------------------
+      - data:
+          desc: Routes the request to the right marketing persona.
+          selected: false
+          title: Intent Router
+          type: question-classifier
+          query_variable_selector: [sys, query]
+          model:
+            provider: openrouter
+            name: anthropic/claude-haiku-4.5
+            mode: chat
+            completion_params: { temperature: 0 }
+          classes:
+            - id: '1'
+              name: STRATEGY -- positioning, GTM, prioritization, "should we", "how do we go to market"
+            - id: '2'
+              name: COPYWRITING -- write/draft emails, ads, social posts, landing pages, scripts, headlines
+            - id: '3'
+              name: BRAND_REVIEW -- review/audit/check/improve existing copy or messaging
+            - id: '4'
+              name: RESEARCH -- audience insights, competitor intel, market questions, persona deep-dives
+            - id: '5'
+              name: CAMPAIGN -- full multi-channel campaign plan, product launch, end-to-end execution roadmap
+            - id: '6'
+              name: GENERAL -- doesn't clearly fit the other five; conversational, ambiguous, or meta
+          instruction: >-
+            Pick the SINGLE best-fit class. Read the user message carefully.
+            If asking to PLAN a campaign explicitly, use CAMPAIGN.
+            If asking for a CHANNEL or AUDIENCE strategy w/o full plan, use STRATEGY.
+            If asking to PRODUCE words for a specific channel, use COPYWRITING.
+            If giving you copy and asking your opinion, use BRAND_REVIEW.
+            If asking about WHO/WHAT/WHY of customers or market, use RESEARCH.
+            Default to GENERAL only if truly ambiguous.
+        id: classifier
+        position: { x: 380, y: 400 }
+        type: custom
+        width: 244
+        height: 200
+
+      # -----------------------------------------------------------------
+      # KNOWLEDGE RETRIEVAL NODES -- one per branch with tailored KB mix
+      # -----------------------------------------------------------------
+      - data:
+          desc: 'Brand voice + Audience'
+          selected: false
+          title: Retrieve (Strategy)
+          type: knowledge-retrieval
+          query_variable_selector: [sys, query]
+          dataset_ids: [MKB1_DATASET_ID, MKB3_DATASET_ID]
+          retrieval_mode: multiple
+          multiple_retrieval_config: { top_k: 6, score_threshold: 0.4, reranking_enable: false }
+        id: retrieve-strategy
+        position: { x: 700, y: 80 }
+        type: custom
+        width: 244
+        height: 100
+
+      - data:
+          desc: 'Brand + Offer + Proven assets'
+          selected: false
+          title: Retrieve (Copy)
+          type: knowledge-retrieval
+          query_variable_selector: [sys, query]
+          dataset_ids: [MKB1_DATASET_ID, MKB2_DATASET_ID, MKB4_DATASET_ID]
+          retrieval_mode: multiple
+          multiple_retrieval_config: { top_k: 8, score_threshold: 0.35, reranking_enable: false }
+        id: retrieve-copy
+        position: { x: 700, y: 220 }
+        type: custom
+        width: 244
+        height: 100
+
+      - data:
+          desc: 'Brand voice only'
+          selected: false
+          title: Retrieve (Brand Review)
+          type: knowledge-retrieval
+          query_variable_selector: [sys, query]
+          dataset_ids: [MKB1_DATASET_ID]
+          retrieval_mode: multiple
+          multiple_retrieval_config: { top_k: 6, score_threshold: 0.4, reranking_enable: false }
+        id: retrieve-brand
+        position: { x: 700, y: 360 }
+        type: custom
+        width: 244
+        height: 100
+
+      - data:
+          desc: 'Audience + Market only'
+          selected: false
+          title: Retrieve (Research)
+          type: knowledge-retrieval
+          query_variable_selector: [sys, query]
+          dataset_ids: [MKB3_DATASET_ID]
+          retrieval_mode: multiple
+          multiple_retrieval_config: { top_k: 8, score_threshold: 0.35, reranking_enable: false }
+        id: retrieve-research
+        position: { x: 700, y: 500 }
+        type: custom
+        width: 244
+        height: 100
+
+      - data:
+          desc: 'All 4 KBs'
+          selected: false
+          title: Retrieve (Campaign)
+          type: knowledge-retrieval
+          query_variable_selector: [sys, query]
+          dataset_ids: [MKB1_DATASET_ID, MKB2_DATASET_ID, MKB3_DATASET_ID, MKB4_DATASET_ID]
+          retrieval_mode: multiple
+          multiple_retrieval_config: { top_k: 10, score_threshold: 0.3, reranking_enable: false }
+        id: retrieve-campaign
+        position: { x: 700, y: 640 }
+        type: custom
+        width: 244
+        height: 100
+
+      - data:
+          desc: 'All 4 KBs (default)'
+          selected: false
+          title: Retrieve (General)
+          type: knowledge-retrieval
+          query_variable_selector: [sys, query]
+          dataset_ids: [MKB1_DATASET_ID, MKB2_DATASET_ID, MKB3_DATASET_ID, MKB4_DATASET_ID]
+          retrieval_mode: multiple
+          multiple_retrieval_config: { top_k: 6, score_threshold: 0.4, reranking_enable: false }
+        id: retrieve-general
+        position: { x: 700, y: 780 }
+        type: custom
+        width: 244
+        height: 100
+
+      # -----------------------------------------------------------------
+      # LLM NODES -- one per persona
+      # -----------------------------------------------------------------
+      - data:
+          desc: 'Strategy persona'
+          selected: false
+          title: LLM (Strategist)
+          type: llm
+          model:
+            provider: openrouter
+            name: anthropic/claude-haiku-4.5
+            mode: chat
+            completion_params: { temperature: 0.4 }
+          context: { enabled: true, variable_selector: [retrieve-strategy, result] }
+          prompt_template:
+            - role: system
+              text: |-
+                You are the Senior Marketing Strategist for the user's business. Voice: confident, direct, no jargon. Sound like a senior practitioner, not an agency. Short sentences. Concrete. Numbers when they exist. Banned: "leverage", "synergy", "innovative", "cutting-edge", "best-in-class", "unlock potential".
+
+                When asked about strategy:
+                1. Restate the goal in one line.
+                2. Surface 2-3 strategic options with explicit trade-offs.
+                3. Pick a recommendation. Cite ICP/market context from retrieved knowledge.
+                4. First 30 days of execution as a numbered list.
+                5. End with the one metric you'd watch.
+
+                Ground every claim in the RETRIEVED KNOWLEDGE below. If it lacks what you need, say so plainly and propose what data would unlock the question.
+
+                === RETRIEVED KNOWLEDGE ===
+                {{#context#}}
+                === END KNOWLEDGE ===
+            - role: user
+              text: '{{#sys.query#}}'
+        id: llm-strategy
+        position: { x: 1020, y: 80 }
+        type: custom
+        width: 244
+        height: 120
+
+      - data:
+          desc: 'Copywriter persona'
+          selected: false
+          title: LLM (Copywriter)
+          type: llm
+          model:
+            provider: openrouter
+            name: anthropic/claude-haiku-4.5
+            mode: chat
+            completion_params: { temperature: 0.7 }
+          context: { enabled: true, variable_selector: [retrieve-copy, result] }
+          prompt_template:
+            - role: system
+              text: |-
+                You are a senior direct-response copywriter. Voice: pulled directly from the brand-voice knowledge below. Banned phrases: "leverage", "synergy", "innovative", "cutting-edge", "best-in-class", "unlock potential", "game-changer".
+
+                When asked to write copy:
+                1. Identify audience, channel, and stage of awareness from the request (ask if missing).
+                2. Draft 3 distinct angles (different hooks/promises).
+                3. Each angle: HEADLINE, 2-3 sentences body, CTA.
+                4. Note which retrieved proven asset (if any) inspired each angle.
+                5. End with: "Want me to expand any of these? Or generate variants on the strongest?"
+
+                Ground every claim in the RETRIEVED KNOWLEDGE below. Match the voice from MKB1.
+
+                === RETRIEVED KNOWLEDGE ===
+                {{#context#}}
+                === END KNOWLEDGE ===
+            - role: user
+              text: '{{#sys.query#}}'
+        id: llm-copy
+        position: { x: 1020, y: 220 }
+        type: custom
+        width: 244
+        height: 120
+
+      - data:
+          desc: 'Brand reviewer persona'
+          selected: false
+          title: LLM (Brand Reviewer)
+          type: llm
+          model:
+            provider: openrouter
+            name: anthropic/claude-haiku-4.5
+            mode: chat
+            completion_params: { temperature: 0.2 }
+          context: { enabled: true, variable_selector: [retrieve-brand, result] }
+          prompt_template:
+            - role: system
+              text: |-
+                You are a brand voice auditor. Specific, surgical, no fluff.
+
+                When asked to review copy:
+                1. Run it through brand voice (retrieved knowledge below). Flag mismatches.
+                2. Score 0-10 in list form (Telegram-friendly): "Clarity: X/10 -- reason. Specificity: X/10 -- reason. Voice fit: X/10 -- reason. CTA strength: X/10 -- reason."
+                3. Show EXACT before/after for the top 3 lines you'd change.
+                4. End with the single highest-leverage change.
+
+                === RETRIEVED BRAND VOICE ===
+                {{#context#}}
+                === END ===
+            - role: user
+              text: '{{#sys.query#}}'
+        id: llm-brand
+        position: { x: 1020, y: 360 }
+        type: custom
+        width: 244
+        height: 120
+
+      - data:
+          desc: 'Research persona'
+          selected: false
+          title: LLM (Researcher)
+          type: llm
+          model:
+            provider: openrouter
+            name: anthropic/claude-haiku-4.5
+            mode: chat
+            completion_params: { temperature: 0.3 }
+          context: { enabled: true, variable_selector: [retrieve-research, result] }
+          prompt_template:
+            - role: system
+              text: |-
+                You are a market analyst. Distinguish FACT (in retrieved knowledge) from INFERENCE (your reasoning).
+
+                When asked research questions:
+                1. Lead with the answer in one sentence.
+                2. Back it with 2-4 evidence points from retrieved knowledge. Cite the source where the knowledge identifies it.
+                3. Mark each point as [FACT] or [INFERENCE].
+                4. End with 1-2 follow-up questions worth investigating next.
+
+                If the knowledge lacks relevant info, say so plainly and propose what to research.
+
+                === RETRIEVED KNOWLEDGE ===
+                {{#context#}}
+                === END ===
+            - role: user
+              text: '{{#sys.query#}}'
+        id: llm-research
+        position: { x: 1020, y: 500 }
+        type: custom
+        width: 244
+        height: 120
+
+      - data:
+          desc: 'Campaign architect persona'
+          selected: false
+          title: LLM (Campaign Architect)
+          type: llm
+          model:
+            provider: openrouter
+            name: anthropic/claude-haiku-4.5
+            mode: chat
+            completion_params: { temperature: 0.5 }
+          context: { enabled: true, variable_selector: [retrieve-campaign, result] }
+          prompt_template:
+            - role: system
+              text: |-
+                You are a campaign architect. Output structured markdown. Banned phrases: "leverage", "synergy", "innovative", "best-in-class".
+
+                When asked to plan a campaign:
+                ## Goal & Success Metric
+                One line each.
+                ## Audience
+                Cite the persona from retrieved knowledge.
+                ## Core Message + 3 Angles
+                Use brand voice. Tie each angle to a proof point from MKB2 if possible.
+                ## Channel Mix
+                Email / Social / Paid / Organic / PR -- include why each is in or out.
+                ## 4-Week Timeline
+                Week 1: ... / Week 2: ... / Week 3: ... / Week 4: ...
+                ## KPIs
+                3 leading + 2 lagging.
+                ## Risks & Mitigations
+                Top 3.
+
+                Ground every section in retrieved knowledge.
+
+                === RETRIEVED KNOWLEDGE ===
+                {{#context#}}
+                === END ===
+            - role: user
+              text: '{{#sys.query#}}'
+        id: llm-campaign
+        position: { x: 1020, y: 640 }
+        type: custom
+        width: 244
+        height: 120
+
+      - data:
+          desc: 'Generalist persona / fallback'
+          selected: false
+          title: LLM (Generalist)
+          type: llm
+          model:
+            provider: openrouter
+            name: anthropic/claude-haiku-4.5
+            mode: chat
+            completion_params: { temperature: 0.4 }
+          context: { enabled: true, variable_selector: [retrieve-general, result] }
+          prompt_template:
+            - role: system
+              text: |-
+                You are the user's senior marketing strategist. Voice: confident, direct, no jargon. Banned: "leverage", "synergy", "innovative", "cutting-edge", "best-in-class".
+
+                Answer the user's question using the retrieved knowledge below. Keep responses under 200 words unless they ask for more depth. Reply in a Telegram-friendly format (short paragraphs, no big tables).
+
+                Always end with: "Want me to (a) draft copy for this, (b) build a campaign plan, (c) review existing copy, or (d) research something specific?"
+
+                === RETRIEVED KNOWLEDGE ===
+                {{#context#}}
+                === END ===
+            - role: user
+              text: '{{#sys.query#}}'
+        id: llm-general
+        position: { x: 1020, y: 780 }
+        type: custom
+        width: 244
+        height: 120
+
+      # -----------------------------------------------------------------
+      # ANSWER NODE -- single output point
+      # -----------------------------------------------------------------
+      - data:
+          desc: ''
+          selected: false
+          title: Answer
+          type: answer
+          answer: |-
+            {{#llm-strategy.text#}}{{#llm-copy.text#}}{{#llm-brand.text#}}{{#llm-research.text#}}{{#llm-campaign.text#}}{{#llm-general.text#}}
+        id: answer
+        position: { x: 1380, y: 400 }
+        type: custom
+        width: 244
+        height: 100
